@@ -452,12 +452,23 @@ class AnalysisEngine:
     
     async def analyze_patterns(self, data_20min: pd.DataFrame, data_2hr: pd.DataFrame, symbol: str) -> Dict:
         """
-        Analyze patterns for live monitoring.
-        Returns pattern detection results for a single symbol.
+        Analyze patterns for live monitoring following exact trading rules.
+        
+        Rules:
+        1. Channel must have minimum 7 days of data
+        2. Call: downward channel + KST green above red + breakout above channel
+        3. Put: upward channel + KST green below red + breakout below channel
+        4. Both conditions must happen for signal
+        5. Fibonacci targets: 0.236 if >50% profit, else 0.5
         """
         try:
             if data_20min is None or data_2hr is None or len(data_20min) < 10 or len(data_2hr) < 10:
                 return {"pattern_detected": False, "reason": "Insufficient data"}
+            
+            # Rule 1: Check if we have minimum 7 days of data (20min * 18 candles per day = 126 candles for 7 days)
+            min_candles_7_days = 126  # 7 days * 18 candles per day (20min)
+            if len(data_20min) < min_candles_7_days:
+                return {"pattern_detected": False, "reason": f"Less than 7 days data: {len(data_20min)} candles"}
             
             # Detect channel in 20-minute data
             channel = self.detect_parallel_channel(data_20min)
@@ -465,25 +476,33 @@ class AnalysisEngine:
             if not channel.valid:
                 return {"pattern_detected": False, "reason": "No valid channel detected"}
             
+            # Rule 1: Verify channel has minimum 7 days of data
+            channel_duration_days = (channel.end_ts - channel.start_ts).total_seconds() / (24 * 3600)
+            if channel_duration_days < 7:
+                return {"pattern_detected": False, "reason": f"Channel duration {channel_duration_days:.1f} days < 7 days minimum"}
+            
             # Compute KST in 2-hour data
             kst = self.compute_kst(data_2hr)
             
             if not kst.crossover_detected:
                 return {"pattern_detected": False, "reason": "No KST crossover detected"}
             
-            # Check for pattern conditions
+            # Check for pattern conditions following exact rules
             pattern_detected = False
             pattern_type = "Channel Breakout + KST"
             strength = 0.0
             kst_overlap = False
             breakout_confirmed = False
             channel_breakout_price = 0.0
+            signal_direction = None  # 'CALL' or 'PUT'
             
-            # Check if channel and KST conditions are met
-            if channel.is_upward and kst.crossover_direction == "bullish":
+            # Rule 2 & 3: Check specific conditions
+            if not channel.is_upward and kst.crossover_direction == "bullish":
+                # Call condition: downward channel + KST green above red
                 pattern_detected = True
                 strength = 0.8
                 kst_overlap = True
+                signal_direction = "CALL"
                 
                 # Check for breakout (last candle close above upper channel)
                 if len(data_20min) > 0:
@@ -496,10 +515,12 @@ class AnalysisEngine:
                         channel_breakout_price = last_close
                         strength = 0.9
             
-            elif not channel.is_upward and kst.crossover_direction == "bearish":
+            elif channel.is_upward and kst.crossover_direction == "bearish":
+                # Put condition: upward channel + KST green below red
                 pattern_detected = True
                 strength = 0.8
                 kst_overlap = True
+                signal_direction = "PUT"
                 
                 # Check for breakout (last candle close below lower channel)
                 if len(data_20min) > 0:
@@ -512,6 +533,14 @@ class AnalysisEngine:
                         channel_breakout_price = last_close
                         strength = 0.9
             
+            # Rule 4: Both conditions must happen (this is checked at higher level)
+            # Rule 5: Calculate Fibonacci targets
+            target_price = 0.0
+            if breakout_confirmed and signal_direction:
+                target_price = self._calculate_fibonacci_target(
+                    channel, signal_direction, channel_breakout_price
+                )
+            
             return {
                 "pattern_detected": pattern_detected,
                 "pattern_type": pattern_type,
@@ -519,6 +548,8 @@ class AnalysisEngine:
                 "kst_overlap": kst_overlap,
                 "breakout_confirmed": breakout_confirmed,
                 "channel_breakout_price": channel_breakout_price,
+                "signal_direction": signal_direction,
+                "target_price": target_price,
                 "channel": channel,
                 "kst": kst
             }
@@ -526,6 +557,42 @@ class AnalysisEngine:
         except Exception as e:
             logger.error(f"Error analyzing patterns for {symbol}: {e}")
             return {"pattern_detected": False, "reason": f"Analysis error: {str(e)}"}
+    
+    def _calculate_fibonacci_target(self, channel, signal_direction: str, entry_price: float) -> float:
+        """
+        Calculate Fibonacci target following exact rules:
+        - Draw Fibonacci from topmost to bottommost point in channel
+        - Target: 0.236 if >50% profit, else 0.5
+        """
+        try:
+            # Get channel range
+            if signal_direction == "CALL":
+                # Downward channel: topmost to bottommost
+                top_point = channel.upper_line["intercept"]  # Start of upper line
+                bottom_point = channel.lower_line["intercept"]  # Start of lower line
+            else:  # PUT
+                # Upward channel: bottommost to topmost
+                bottom_point = channel.lower_line["intercept"]  # Start of lower line
+                top_point = channel.upper_line["intercept"]  # Start of upper line
+            
+            # Calculate range
+            range_size = abs(top_point - bottom_point)
+            
+            # Calculate Fibonacci levels
+            fib_236 = entry_price + (range_size * 0.236)
+            fib_50 = entry_price + (range_size * 0.5)
+            
+            # Rule: If 0.236 gives >50% profit, use 0.236, else use 0.5
+            profit_236_pct = ((fib_236 - entry_price) / entry_price) * 100
+            
+            if profit_236_pct >= 50:
+                return fib_236
+            else:
+                return fib_50
+                
+        except Exception as e:
+            logger.error(f"Error calculating Fibonacci target: {e}")
+            return entry_price * 1.15  # Fallback 15% target
 
     def should_exit_position(
         self, 

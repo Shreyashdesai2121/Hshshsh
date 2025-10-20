@@ -399,9 +399,9 @@ class LiveMonitor:
                     logger.debug(f"❌ {symbol} {strike}{option_type} - No instrument token found")
                     return
                 
-                start_date_20min = datetime.now() - timedelta(days=5)
+                start_date_20min = datetime.now() - timedelta(days=10)  # Need more data for 7+ days
                 end_date = datetime.now()
-                start_date_2hr = datetime.now() - timedelta(days=10)
+                start_date_2hr = datetime.now() - timedelta(days=15)  # Need more data for 2hr
                 
                 data_20min = await self.data_engine.fetch_ohlc_data(
                     instrument_token=instrument_token,
@@ -427,13 +427,23 @@ class LiveMonitor:
                 )
                 
                 if not analysis_result or not analysis_result.get('pattern_detected'):
-                    logger.debug(f"❌ {symbol} {strike}{option_type} - No real pattern detected")
+                    logger.debug(f"❌ {symbol} {strike}{option_type} - No real pattern detected: {analysis_result.get('reason', 'Unknown')}")
                     return
                 
                 # Real pattern detected - get analysis details
                 pattern_type = analysis_result.get('pattern_type', 'Channel Breakout + KST')
                 pattern_strength = analysis_result.get('strength', 0.8)
                 channel_breakout_price = analysis_result.get('channel_breakout_price', 0)
+                signal_direction = analysis_result.get('signal_direction', None)
+                target_price = analysis_result.get('target_price', 0)
+                
+                # Check if this contract matches the signal direction
+                if signal_direction == "CALL" and option_type != "CE":
+                    logger.debug(f"❌ {symbol} {strike}{option_type} - Signal is for CALL but this is PUT")
+                    return
+                elif signal_direction == "PUT" and option_type != "PE":
+                    logger.debug(f"❌ {symbol} {strike}{option_type} - Signal is for PUT but this is CALL")
+                    return
                 
             except Exception as e:
                 logger.warning(f"Real data analysis failed for {symbol}: {e}")
@@ -453,14 +463,14 @@ class LiveMonitor:
                 "current_price": current_price,
                 "strength": pattern_strength,
                 "status": "pattern_detected",
-                "step": "Pattern detected - waiting for KST overlap",
+                "step": f"Pattern detected - {signal_direction} signal - waiting for KST overlap",
                 "timestamp": datetime.now().isoformat()
             }
             self.pattern_alerts.append(pattern_alert)
             
             # Log with emoji for better visibility
             emoji = "🎯" if contract.symbol == "NIFTY50" else "🏦" if contract.symbol == "BANKNIFTY" else "📈"
-            logger.info(f"{emoji} {contract.symbol} {contract.option_type} {contract.strike} - Pattern detected! Waiting for KST overlap...")
+            logger.info(f"{emoji} {contract.symbol} {contract.option_type} {contract.strike} - Pattern detected! {signal_direction} signal - waiting for KST overlap...")
             
             # Step 2: Check KST Overlap (real analysis)
             kst_overlap = analysis_result.get('kst_overlap', False)
@@ -473,26 +483,24 @@ class LiveMonitor:
                     "current_price": current_price,
                     "strength": pattern_strength,
                     "status": "kst_overlap",
-                    "step": "KST overlap detected - waiting for 20min breakout",
+                    "step": f"KST overlap detected - {signal_direction} signal - waiting for 20min breakout",
                     "timestamp": datetime.now().isoformat()
                 }
                 self.pattern_alerts.append(kst_alert)
-                logger.info(f"🔄 {contract.symbol} {contract.option_type} {contract.strike} - KST overlap! Waiting for breakout...")
+                logger.info(f"🔄 {contract.symbol} {contract.option_type} {contract.strike} - KST overlap! {signal_direction} signal - waiting for breakout...")
                 
                 # Step 3: Check Breakout (real analysis)
                 breakout_confirmed = analysis_result.get('breakout_confirmed', False)
                 if breakout_confirmed:
-                    # Calculate targets using Fibonacci levels
+                    # Use calculated target price from analysis
                     entry_price = current_price
-                    if channel_breakout_price > 0:
-                        # Calculate Fibonacci targets
-                        targets = self._calculate_fibonacci_targets(entry_price, channel_breakout_price)
-                        target_price = targets['target_236']  # Use 0.236 level
-                        stop_loss_price = targets['stop_loss']
+                    if target_price > 0:
+                        final_target_price = target_price
                     else:
-                        # Fallback calculation
-                        target_price = entry_price * 1.15  # 15% target
-                        stop_loss_price = entry_price * 0.95  # 5% stop loss
+                        final_target_price = entry_price * 1.15  # Fallback 15% target
+                    
+                    # Calculate stop loss (channel re-entry)
+                    stop_loss_price = entry_price * 0.95  # 5% stop loss as fallback
                     
                     breakout_alert = {
                         "symbol": contract.symbol,
@@ -502,9 +510,9 @@ class LiveMonitor:
                         "current_price": entry_price,
                         "strength": pattern_strength,
                         "status": "breakout_confirmed",
-                        "step": "Breakout confirmed - TRADE SIGNAL!",
+                        "step": f"Breakout confirmed - {signal_direction} TRADE SIGNAL!",
                         "timestamp": datetime.now().isoformat(),
-                        "target_price": target_price,
+                        "target_price": final_target_price,
                         "stop_loss_price": stop_loss_price,
                         "entry_price": entry_price,
                         "channel_breakout_price": channel_breakout_price
@@ -519,7 +527,7 @@ class LiveMonitor:
                         strike=contract.strike,
                         option_type=contract.option_type,
                         entry_price=entry_price,
-                        target_price=target_price,
+                        target_price=final_target_price,
                         stop_loss_price=stop_loss_price,
                         signal_time=datetime.now(),
                         current_price=entry_price
@@ -530,8 +538,8 @@ class LiveMonitor:
                     self.total_invested += self.initial_investment
                     self.total_current_value += self.initial_investment  # Start with same value
                     
-                    logger.info(f"🚀 {contract.symbol} {contract.option_type} {contract.strike} - BREAKOUT! TRADE SIGNAL!")
-                    logger.info(f"   Entry: ₹{entry_price:.2f} | Target: ₹{target_price:.2f} | Stop Loss: ₹{stop_loss_price:.2f}")
+                    logger.info(f"🚀 {contract.symbol} {contract.option_type} {contract.strike} - BREAKOUT! {signal_direction} TRADE SIGNAL!")
+                    logger.info(f"   Entry: ₹{entry_price:.2f} | Target: ₹{final_target_price:.2f} | Stop Loss: ₹{stop_loss_price:.2f}")
                 
         except Exception as e:
             logger.error(f"Error checking pattern for {contract.symbol} {contract.strike}{contract.option_type}: {e}")

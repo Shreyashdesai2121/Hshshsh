@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # NIFTY50 Trading System
 
 A complete algorithmic trading system for NIFTY50 options implementing Channel Breakout + No-Sure-Thing (KST) strategy with a professional dashboard.
@@ -290,3 +291,7 @@ For issues and questions:
 ---
 
 **Happy Trading! 📈**
+=======
+# Hshshsh
+Heheh
+>>>>>>> 75c402b4f728eaf73df6685cb29b0b1533e12b74

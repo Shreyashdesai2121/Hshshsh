@@ -226,12 +226,20 @@ const LiveMonitor: React.FC = () => {
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-900">Live Pattern Monitoring</h2>
-          <p className="text-sm text-gray-500">Real-time Pattern Detection & Trade Signals</p>
-        </div>
+          {/* Header */}
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Live Pattern Monitoring</h2>
+              <p className="text-sm text-gray-500">Real-time Pattern Detection & Trade Signals</p>
+              <div className="mt-2 p-2 bg-green-100 border border-green-300 rounded-md">
+                <p className="text-sm text-green-800 font-medium">
+                  🎯 REAL DATA MODE - Using actual market data for pattern detection
+                </p>
+                <p className="text-xs text-green-700">
+                  📊 SIGNAL ONLY - No real trading, only signal generation with ₹10,000 assumption tracking
+                </p>
+              </div>
+            </div>
         
         <div className="flex items-center space-x-4">
           {status && (

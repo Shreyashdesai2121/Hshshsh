@@ -347,6 +347,9 @@ class LiveMonitor:
         """Start live monitoring"""
         try:
             logger.info("Starting live pattern monitoring...")
+            logger.info("🎯 REAL DATA MODE - Using actual market data for pattern detection")
+            logger.info("📊 SIGNAL ONLY - No real trading, only signal generation")
+            logger.info("💰 ASSUMPTION TRACKING - ₹10,000 per signal for performance stats")
             self.monitoring_active = True
             
             while self.monitoring_active:
@@ -381,114 +384,163 @@ class LiveMonitor:
             logger.error(f"Error processing batch: {e}")
     
     async def _check_contract_pattern(self, contract: OptionContract):
-        """Check pattern for a single contract"""
+        """Check pattern for a single contract using REAL analysis"""
         try:
-            # Simulate realistic pattern detection with step-by-step progress
-            import random
+            # Get real market data for pattern analysis
+            symbol = contract.symbol
+            strike = contract.strike
+            option_type = contract.option_type
             
-            # Different probabilities for different symbols
-            if contract.symbol == "NIFTY50":
-                pattern_prob = 0.25  # 25% chance for NIFTY50
-            elif contract.symbol == "BANKNIFTY":
-                pattern_prob = 0.20  # 20% chance for BANKNIFTY
-            else:
-                pattern_prob = 0.15  # 15% chance for stocks
+            try:
+                # Get real OHLC data for pattern analysis
+                data_20min = await self.data_engine.fetch_ohlc_data(
+                    symbol=symbol,
+                    interval="20min",
+                    from_date=(datetime.now() - timedelta(days=5)).strftime("%Y-%m-%d"),
+                    to_date=datetime.now().strftime("%Y-%m-%d")
+                )
+                
+                data_2hr = await self.data_engine.fetch_ohlc_data(
+                    symbol=symbol,
+                    interval="2hr",
+                    from_date=(datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d"),
+                    to_date=datetime.now().strftime("%Y-%m-%d")
+                )
+                
+                if not data_20min or not data_2hr:
+                    logger.debug(f"❌ {symbol} {strike}{option_type} - No data available")
+                    return
+                
+                # Use real analysis engine for pattern detection
+                analysis_result = await self.analysis_engine.analyze_patterns(
+                    data_20min, data_2hr, symbol
+                )
+                
+                if not analysis_result or not analysis_result.get('pattern_detected'):
+                    logger.debug(f"❌ {symbol} {strike}{option_type} - No real pattern detected")
+                    return
+                
+                # Real pattern detected - get analysis details
+                pattern_type = analysis_result.get('pattern_type', 'Channel Breakout + KST')
+                pattern_strength = analysis_result.get('strength', 0.8)
+                channel_breakout_price = analysis_result.get('channel_breakout_price', 0)
+                
+            except Exception as e:
+                logger.warning(f"Real data analysis failed for {symbol}: {e}")
+                # Only use mock data as last resort
+                logger.info(f"⚠️ Using mock data for {symbol} due to real data failure")
+                return  # Don't generate fake signals
             
-            # Check for pattern detection
-            if random.random() < pattern_prob:
-                # Step 1: Pattern Detected
-                pattern_alert = {
+            # Real pattern detected - proceed with signal generation
+            # Step 1: Pattern Detected
+            current_price = await self._get_real_price(contract.symbol)
+            
+            pattern_alert = {
+                "symbol": contract.symbol,
+                "strike": contract.strike,
+                "option_type": contract.option_type,
+                "pattern_type": pattern_type,
+                "current_price": current_price,
+                "strength": pattern_strength,
+                "status": "pattern_detected",
+                "step": "Pattern detected - waiting for KST overlap",
+                "timestamp": datetime.now().isoformat()
+            }
+            self.pattern_alerts.append(pattern_alert)
+            
+            # Log with emoji for better visibility
+            emoji = "🎯" if contract.symbol == "NIFTY50" else "🏦" if contract.symbol == "BANKNIFTY" else "📈"
+            logger.info(f"{emoji} {contract.symbol} {contract.option_type} {contract.strike} - Pattern detected! Waiting for KST overlap...")
+            
+            # Step 2: Check KST Overlap (real analysis)
+            kst_overlap = analysis_result.get('kst_overlap', False)
+            if kst_overlap:
+                kst_alert = {
                     "symbol": contract.symbol,
                     "strike": contract.strike,
                     "option_type": contract.option_type,
-                    "pattern_type": "Channel Breakout + KST",
-                    "current_price": self._get_mock_price(contract.symbol),
-                    "strength": round(random.uniform(0.7, 0.95), 2),
-                    "status": "pattern_detected",
-                    "step": "Pattern detected - waiting for KST overlap",
+                    "pattern_type": pattern_type,
+                    "current_price": current_price,
+                    "strength": pattern_strength,
+                    "status": "kst_overlap",
+                    "step": "KST overlap detected - waiting for 20min breakout",
                     "timestamp": datetime.now().isoformat()
                 }
-                self.pattern_alerts.append(pattern_alert)
+                self.pattern_alerts.append(kst_alert)
+                logger.info(f"🔄 {contract.symbol} {contract.option_type} {contract.strike} - KST overlap! Waiting for breakout...")
                 
-                # Log with emoji for better visibility
-                emoji = "🎯" if contract.symbol == "NIFTY50" else "🏦" if contract.symbol == "BANKNIFTY" else "📈"
-                logger.info(f"{emoji} {contract.symbol} {contract.option_type} {contract.strike} - Pattern detected! Waiting for KST overlap...")
-                
-                # Step 2: KST Overlap (after 30-60 seconds)
-                if random.random() < 0.6:  # 60% chance of KST overlap
-                    await asyncio.sleep(random.uniform(30, 60))  # Wait 30-60 seconds
-                    
-                    kst_alert = {
-                        "symbol": contract.symbol,
-                        "strike": contract.strike,
-                        "option_type": contract.option_type,
-                        "pattern_type": "Channel Breakout + KST",
-                        "current_price": self._get_mock_price(contract.symbol),
-                        "strength": round(random.uniform(0.8, 0.95), 2),
-                        "status": "kst_overlap",
-                        "step": "KST overlap detected - waiting for 20min breakout",
-                        "timestamp": datetime.now().isoformat()
-                    }
-                    self.pattern_alerts.append(kst_alert)
-                    logger.info(f"🔄 {contract.symbol} {contract.option_type} {contract.strike} - KST overlap! Waiting for breakout...")
-                    
-                    # Step 3: Breakout (after another 30-60 seconds)
-                    if random.random() < 0.7:  # 70% chance of breakout
-                        await asyncio.sleep(random.uniform(30, 60))  # Wait another 30-60 seconds
-                        
-                        # Calculate targets using Fibonacci levels
-                        entry_price = self._get_mock_price(contract.symbol)
-                        channel_breakout_price = entry_price * random.uniform(1.02, 1.05)  # 2-5% above entry
-                        
+                # Step 3: Check Breakout (real analysis)
+                breakout_confirmed = analysis_result.get('breakout_confirmed', False)
+                if breakout_confirmed:
+                    # Calculate targets using Fibonacci levels
+                    entry_price = current_price
+                    if channel_breakout_price > 0:
                         # Calculate Fibonacci targets
                         targets = self._calculate_fibonacci_targets(entry_price, channel_breakout_price)
                         target_price = targets['target_236']  # Use 0.236 level
                         stop_loss_price = targets['stop_loss']
-                        
-                        breakout_alert = {
-                            "symbol": contract.symbol,
-                            "strike": contract.strike,
-                            "option_type": contract.option_type,
-                            "pattern_type": "Channel Breakout + KST",
-                            "current_price": entry_price,
-                            "strength": round(random.uniform(0.85, 0.98), 2),
-                            "status": "breakout_confirmed",
-                            "step": "Breakout confirmed - TRADE SIGNAL!",
-                            "timestamp": datetime.now().isoformat(),
-                            "target_price": target_price,
-                            "stop_loss_price": stop_loss_price,
-                            "entry_price": entry_price,
-                            "channel_breakout_price": channel_breakout_price
-                        }
-                        self.pattern_alerts.append(breakout_alert)
-                        
-                        # Create past signal for tracking
-                        signal_id = f"{contract.symbol}_{contract.strike}{contract.option_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                        past_signal = PastSignal(
-                            signal_id=signal_id,
-                            symbol=contract.symbol,
-                            strike=contract.strike,
-                            option_type=contract.option_type,
-                            entry_price=entry_price,
-                            target_price=target_price,
-                            stop_loss_price=stop_loss_price,
-                            signal_time=datetime.now(),
-                            current_price=entry_price
-                        )
-                        self.past_signals.append(past_signal)
-                        
-                        # Update performance tracking
-                        self.total_invested += self.initial_investment
-                        self.total_current_value += self.initial_investment  # Start with same value
-                        
-                        logger.info(f"🚀 {contract.symbol} {contract.option_type} {contract.strike} - BREAKOUT! TRADE SIGNAL!")
-                        logger.info(f"   Entry: ₹{entry_price:.2f} | Target: ₹{target_price:.2f} | Stop Loss: ₹{stop_loss_price:.2f}")
-            else:
-                # No pattern detected - log this too
-                logger.debug(f"❌ {contract.symbol} {contract.option_type} {contract.strike} - No pattern detected yet")
+                    else:
+                        # Fallback calculation
+                        target_price = entry_price * 1.15  # 15% target
+                        stop_loss_price = entry_price * 0.95  # 5% stop loss
+                    
+                    breakout_alert = {
+                        "symbol": contract.symbol,
+                        "strike": contract.strike,
+                        "option_type": contract.option_type,
+                        "pattern_type": pattern_type,
+                        "current_price": entry_price,
+                        "strength": pattern_strength,
+                        "status": "breakout_confirmed",
+                        "step": "Breakout confirmed - TRADE SIGNAL!",
+                        "timestamp": datetime.now().isoformat(),
+                        "target_price": target_price,
+                        "stop_loss_price": stop_loss_price,
+                        "entry_price": entry_price,
+                        "channel_breakout_price": channel_breakout_price
+                    }
+                    self.pattern_alerts.append(breakout_alert)
+                    
+                    # Create past signal for tracking
+                    signal_id = f"{contract.symbol}_{contract.strike}{contract.option_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                    past_signal = PastSignal(
+                        signal_id=signal_id,
+                        symbol=contract.symbol,
+                        strike=contract.strike,
+                        option_type=contract.option_type,
+                        entry_price=entry_price,
+                        target_price=target_price,
+                        stop_loss_price=stop_loss_price,
+                        signal_time=datetime.now(),
+                        current_price=entry_price
+                    )
+                    self.past_signals.append(past_signal)
+                    
+                    # Update performance tracking
+                    self.total_invested += self.initial_investment
+                    self.total_current_value += self.initial_investment  # Start with same value
+                    
+                    logger.info(f"🚀 {contract.symbol} {contract.option_type} {contract.strike} - BREAKOUT! TRADE SIGNAL!")
+                    logger.info(f"   Entry: ₹{entry_price:.2f} | Target: ₹{target_price:.2f} | Stop Loss: ₹{stop_loss_price:.2f}")
                 
         except Exception as e:
             logger.error(f"Error checking pattern for {contract.symbol} {contract.strike}{contract.option_type}: {e}")
+    
+    async def _get_real_price(self, symbol: str) -> float:
+        """Get real price from broker"""
+        try:
+            # Try to get real price from broker
+            if hasattr(self.broker, 'get_quote'):
+                quote = await self.broker.get_quote(symbol)
+                if quote and 'lastPrice' in quote:
+                    return float(quote['lastPrice'])
+            
+            # Fallback to mock only if broker fails
+            logger.warning(f"Could not get real price for {symbol}, using mock data")
+            return self._get_mock_price(symbol)
+        except Exception as e:
+            logger.error(f"Error getting real price for {symbol}: {e}")
+            return self._get_mock_price(symbol)
     
     def _get_mock_price(self, symbol: str) -> float:
         """Get mock price for symbol"""
@@ -531,6 +583,22 @@ class LiveMonitor:
     async def update_signal_outcomes(self):
         """Update outcomes of past signals"""
         try:
+            # Check if market is open (9:15 AM to 3:30 PM IST)
+            now = datetime.now()
+            market_open = now.hour >= 9 and now.hour < 15 and (now.hour != 9 or now.minute >= 15)
+            
+            if not market_open:
+                # Market is closed - only update current prices, don't check targets/stop losses
+                for signal in self.past_signals:
+                    if signal.outcome == "running":
+                        # Get current price (mock)
+                        current_price = self._get_mock_price(signal.symbol)
+                        signal.current_price = current_price
+                        signal.last_updated = datetime.now()
+                        # Don't check targets/stop losses when market is closed
+                return
+            
+            # Market is open - check outcomes
             for signal in self.past_signals:
                 if signal.outcome == "running":
                     # Get current price

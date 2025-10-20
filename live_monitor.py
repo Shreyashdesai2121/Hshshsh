@@ -393,18 +393,28 @@ class LiveMonitor:
             
             try:
                 # Get real OHLC data for pattern analysis
+                # First get the instrument token for the symbol
+                instrument_token = await self._get_instrument_token(symbol)
+                if not instrument_token:
+                    logger.debug(f"❌ {symbol} {strike}{option_type} - No instrument token found")
+                    return
+                
+                start_date_20min = datetime.now() - timedelta(days=5)
+                end_date = datetime.now()
+                start_date_2hr = datetime.now() - timedelta(days=10)
+                
                 data_20min = await self.data_engine.fetch_ohlc_data(
-                    symbol=symbol,
-                    interval="20min",
-                    from_date=(datetime.now() - timedelta(days=5)).strftime("%Y-%m-%d"),
-                    to_date=datetime.now().strftime("%Y-%m-%d")
+                    instrument_token=instrument_token,
+                    timeframe="20min",
+                    start_date=start_date_20min,
+                    end_date=end_date
                 )
                 
                 data_2hr = await self.data_engine.fetch_ohlc_data(
-                    symbol=symbol,
-                    interval="2hr",
-                    from_date=(datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d"),
-                    to_date=datetime.now().strftime("%Y-%m-%d")
+                    instrument_token=instrument_token,
+                    timeframe="2hr",
+                    start_date=start_date_2hr,
+                    end_date=end_date
                 )
                 
                 if not data_20min or not data_2hr:
@@ -526,6 +536,41 @@ class LiveMonitor:
         except Exception as e:
             logger.error(f"Error checking pattern for {contract.symbol} {contract.strike}{contract.option_type}: {e}")
     
+    async def _get_instrument_token(self, symbol: str) -> Optional[str]:
+        """Get instrument token for symbol"""
+        try:
+            # Map symbols to instrument tokens
+            symbol_to_token = {
+                "NIFTY50": "256265",  # NIFTY 50 index
+                "BANKNIFTY": "260105",  # BANK NIFTY index
+                "RELIANCE": "2885633",  # RELIANCE stock
+                "TCS": "2953217",  # TCS stock
+                "HDFCBANK": "341249",  # HDFC Bank stock
+                "INFY": "408065",  # Infosys stock
+                "HINDUNILVR": "356865",  # Hindustan Unilever stock
+                "ICICIBANK": "1270529",  # ICICI Bank stock
+                "KOTAKBANK": "492033",  # Kotak Bank stock
+                "BHARTIARTL": "2714625",  # Bharti Airtel stock
+                "ITC": "424961",  # ITC stock
+                "SBIN": "779521",  # State Bank of India stock
+                "ASIANPAINT": "60417",  # Asian Paints stock
+                "MARUTI": "2815745",  # Maruti Suzuki stock
+                "AXISBANK": "1510401",  # Axis Bank stock
+                "LT": "2939649",  # Larsen & Toubro stock
+                "HINDUNILVR": "356865",  # Hindustan Unilever stock
+                "NESTLEIND": "4598529",  # Nestle India stock
+                "WIPRO": "969473",  # Wipro stock
+                "POWERGRID": "3834113",  # Power Grid stock
+                "TITAN": "897537",  # Titan stock
+                "ULTRACEMCO": "2952193",  # UltraTech Cement stock
+                "TECHM": "3465729",  # Tech Mahindra stock
+            }
+            
+            return symbol_to_token.get(symbol)
+        except Exception as e:
+            logger.error(f"Error getting instrument token for {symbol}: {e}")
+            return None
+
     async def _get_real_price(self, symbol: str) -> float:
         """Get real price from broker"""
         try:

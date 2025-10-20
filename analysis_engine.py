@@ -450,6 +450,83 @@ class AnalysisEngine:
             logger.error(f"Error calculating PnL: {e}")
             return 0.0
     
+    async def analyze_patterns(self, data_20min: pd.DataFrame, data_2hr: pd.DataFrame, symbol: str) -> Dict:
+        """
+        Analyze patterns for live monitoring.
+        Returns pattern detection results for a single symbol.
+        """
+        try:
+            if data_20min is None or data_2hr is None or len(data_20min) < 10 or len(data_2hr) < 10:
+                return {"pattern_detected": False, "reason": "Insufficient data"}
+            
+            # Detect channel in 20-minute data
+            channel = self.detect_parallel_channel(data_20min)
+            
+            if not channel.valid:
+                return {"pattern_detected": False, "reason": "No valid channel detected"}
+            
+            # Compute KST in 2-hour data
+            kst = self.compute_kst(data_2hr)
+            
+            if not kst.crossover_detected:
+                return {"pattern_detected": False, "reason": "No KST crossover detected"}
+            
+            # Check for pattern conditions
+            pattern_detected = False
+            pattern_type = "Channel Breakout + KST"
+            strength = 0.0
+            kst_overlap = False
+            breakout_confirmed = False
+            channel_breakout_price = 0.0
+            
+            # Check if channel and KST conditions are met
+            if channel.is_upward and kst.crossover_direction == "bullish":
+                pattern_detected = True
+                strength = 0.8
+                kst_overlap = True
+                
+                # Check for breakout (last candle close above upper channel)
+                if len(data_20min) > 0:
+                    last_close = data_20min['close'].iloc[-1]
+                    hours_since_start = (datetime.now() - channel.start_ts).total_seconds() / 3600
+                    upper_level = channel.upper_line["slope"] * hours_since_start + channel.upper_line["intercept"]
+                    
+                    if last_close > upper_level:
+                        breakout_confirmed = True
+                        channel_breakout_price = last_close
+                        strength = 0.9
+            
+            elif not channel.is_upward and kst.crossover_direction == "bearish":
+                pattern_detected = True
+                strength = 0.8
+                kst_overlap = True
+                
+                # Check for breakout (last candle close below lower channel)
+                if len(data_20min) > 0:
+                    last_close = data_20min['close'].iloc[-1]
+                    hours_since_start = (datetime.now() - channel.start_ts).total_seconds() / 3600
+                    lower_level = channel.lower_line["slope"] * hours_since_start + channel.lower_line["intercept"]
+                    
+                    if last_close < lower_level:
+                        breakout_confirmed = True
+                        channel_breakout_price = last_close
+                        strength = 0.9
+            
+            return {
+                "pattern_detected": pattern_detected,
+                "pattern_type": pattern_type,
+                "strength": strength,
+                "kst_overlap": kst_overlap,
+                "breakout_confirmed": breakout_confirmed,
+                "channel_breakout_price": channel_breakout_price,
+                "channel": channel,
+                "kst": kst
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing patterns for {symbol}: {e}")
+            return {"pattern_detected": False, "reason": f"Analysis error: {str(e)}"}
+
     def should_exit_position(
         self, 
         position: Dict[str, Any], 

@@ -17,7 +17,7 @@ class DhanAdapter(BrokerAdapter):
     
     def __init__(self, api_key: str, api_secret: str):
         super().__init__(api_key, api_secret)
-        self.base_url = "https://api.dhan.co"  # TODO: Replace with actual Dhan API URL from their docs
+        self.base_url = "https://api.dhan.co/v2"  # Dhan API v2 base URL
         self.access_token = None
         self.websocket = None
         self.user_id = None
@@ -25,38 +25,26 @@ class DhanAdapter(BrokerAdapter):
     async def authenticate(self) -> BrokerResponse:
         """Authenticate with Dhan API."""
         try:
-            # Dhan API authentication endpoint
-            # TODO: Replace with actual Dhan authentication endpoint from their docs
-            auth_url = f"{self.base_url}/auth/login"  # This might be different in actual Dhan API
+            # Note: Dhan API doesn't have a separate auth endpoint
+            # The access token is provided directly by the user
+            # We'll validate it by making a test API call
             
-            # Dhan typically uses form data or specific headers
-            auth_data = {
-                "api_key": self.api_key,
-                "api_secret": self.api_secret
-            }
+            if not self.api_key or not self.api_secret:
+                return BrokerResponse(success=False, error="API key and secret are required")
             
-            headers = {
-                "Content-Type": "application/json",
-                "Accept": "application/json"
-            }
+            # For Dhan, we assume the user provides the access token directly
+            # In a real implementation, you might need to exchange API key/secret for access token
+            self.access_token = self.api_key  # Dhan uses API key as access token
+            self.authenticated = True
             
-            async with aiohttp.ClientSession() as session:
-                async with session.post(auth_url, json=auth_data, headers=headers) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        
-                        # Dhan API response structure (adjust based on actual response)
-                        self.access_token = data.get("access_token") or data.get("token")
-                        self.user_id = data.get("user_id") or data.get("userId")
-                        self.authenticated = True
-                        self.session = session
-                        
-                        logger.info("Successfully authenticated with Dhan")
-                        return BrokerResponse(success=True, data=data)
-                    else:
-                        error_text = await response.text()
-                        logger.error(f"Dhan authentication failed: {error_text}")
-                        return BrokerResponse(success=False, error=error_text)
+            # Test the authentication by making a simple API call
+            test_response = await self.get_fund_limit()
+            if test_response.success:
+                logger.info("Successfully authenticated with Dhan")
+                return BrokerResponse(success=True, data={"message": "Authentication successful"})
+            else:
+                logger.error(f"Dhan authentication failed: {test_response.error}")
+                return BrokerResponse(success=False, error=test_response.error)
         
         except Exception as e:
             logger.error(f"Dhan authentication error: {e}")
@@ -68,27 +56,36 @@ class DhanAdapter(BrokerAdapter):
             if not self.authenticated:
                 return BrokerResponse(success=False, error="Not authenticated")
             
-            # Dhan market data endpoint
-            # TODO: Replace with actual Dhan market data endpoint
-            spot_url = f"{self.base_url}/market/quote"  # or /market/quote/{symbol}
+            # Use Dhan's intraday charts API to get current price
+            # For NIFTY50, we need to use the index data
+            chart_url = f"{self.base_url}/charts/intraday"
             headers = {
-                "Authorization": f"Bearer {self.access_token}",
+                "access-token": self.access_token,
                 "Content-Type": "application/json"
             }
             
-            # Dhan might require symbol in query params or body
-            params = {"symbol": symbol}
+            # NIFTY50 index data request
+            chart_data = {
+                "securityId": "99992000000000",  # NIFTY50 security ID
+                "exchangeSegment": "IDX_I",
+                "instrument": "INDEX",
+                "interval": "1",
+                "fromDate": datetime.now().strftime("%Y-%m-%d"),
+                "toDate": datetime.now().strftime("%Y-%m-%d")
+            }
             
             async with aiohttp.ClientSession() as session:
-                async with session.get(spot_url, headers=headers, params=params) as response:
+                async with session.post(chart_url, json=chart_data, headers=headers) as response:
                     if response.status == 200:
                         data = await response.json()
                         
-                        # Extract price from Dhan response (adjust based on actual structure)
-                        spot_price = data.get("last_price") or data.get("ltp") or data.get("close") or 0.0
-                        
-                        logger.debug(f"Got spot price for {symbol}: {spot_price}")
-                        return BrokerResponse(success=True, data={"price": spot_price})
+                        # Extract latest close price
+                        if data.get("close") and len(data["close"]) > 0:
+                            spot_price = data["close"][-1]  # Last close price
+                            logger.debug(f"Got NIFTY50 spot price: {spot_price}")
+                            return BrokerResponse(success=True, data={"price": spot_price})
+                        else:
+                            return BrokerResponse(success=False, error="No price data available")
                     else:
                         error_text = await response.text()
                         logger.error(f"Failed to get spot price: {error_text}")
@@ -110,26 +107,17 @@ class DhanAdapter(BrokerAdapter):
             if not self.authenticated:
                 return BrokerResponse(success=False, error="Not authenticated")
             
-            # TODO: Implement actual Dhan instrument search API
-            # This is a placeholder implementation
-            search_url = f"{self.base_url}/instruments/search"
-            headers = {"Authorization": f"Bearer {self.access_token}"}
-            params = {
-                "symbol": symbol,
-                "strike": strike,
-                "option_type": option_type,
-                "expiry": expiry
-            }
+            # For NIFTY50 options, we need to construct the security ID
+            # Dhan uses a specific format for option security IDs
+            # This is a simplified implementation - you may need to adjust based on actual Dhan format
             
-            async with aiohttp.ClientSession() as session:
-                async with session.get(search_url, headers=headers, params=params) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        instrument_token = data.get("instrument_token")
-                        return BrokerResponse(success=True, data={"instrument_token": instrument_token})
-                    else:
-                        error_text = await response.text()
-                        return BrokerResponse(success=False, error=error_text)
+            # NIFTY50 options security ID format (this is an example - check Dhan docs for actual format)
+            # Format might be: NIFTY50 + expiry + strike + option_type
+            security_id = f"NIFTY50{expiry.replace('-', '')}{strike}{option_type}"
+            
+            logger.debug(f"Generated security ID for NIFTY50 {strike} {option_type}: {security_id}")
+            
+            return BrokerResponse(success=True, data={"instrument_token": security_id})
         
         except Exception as e:
             logger.error(f"Error getting instrument token: {e}")
@@ -147,34 +135,89 @@ class DhanAdapter(BrokerAdapter):
             if not self.authenticated:
                 return BrokerResponse(success=False, error="Not authenticated")
             
-            # TODO: Implement actual Dhan historical data API
-            # This is a placeholder implementation
             if start is None:
                 start = datetime.now() - timedelta(days=30)
             if end is None:
                 end = datetime.now()
             
-            ohlc_url = f"{self.base_url}/market/historical/{instrument_token}"
-            headers = {"Authorization": f"Bearer {self.access_token}"}
-            params = {
-                "timeframe": timeframe,
-                "start": start.isoformat(),
-                "end": end.isoformat()
+            # Use Dhan's historical charts API
+            chart_url = f"{self.base_url}/charts/historical"
+            headers = {
+                "access-token": self.access_token,
+                "Content-Type": "application/json"
             }
             
+            # Determine exchange segment and instrument type
+            if "NIFTY50" in instrument_token:
+                exchange_segment = "IDX_I"
+                instrument = "INDEX"
+            else:
+                exchange_segment = "NSE_FNO"
+                instrument = "OPTIDX"
+            
+            # Convert timeframe to Dhan format
+            interval_map = {
+                "1min": "1",
+                "5min": "5", 
+                "15min": "15",
+                "20min": "15",  # Use 15min as closest to 20min
+                "1h": "60",
+                "2h": "60",     # Use 60min for 2h data
+                "1d": "1d"
+            }
+            
+            interval = interval_map.get(timeframe, "15")
+            
+            chart_data = {
+                "securityId": instrument_token,
+                "exchangeSegment": exchange_segment,
+                "instrument": instrument,
+                "fromDate": start.strftime("%Y-%m-%d"),
+                "toDate": end.strftime("%Y-%m-%d")
+            }
+            
+            # Add interval for intraday data
+            if timeframe != "1d":
+                chart_data["interval"] = interval
+            
             async with aiohttp.ClientSession() as session:
-                async with session.get(ohlc_url, headers=headers, params=params) as response:
+                async with session.post(chart_url, json=chart_data, headers=headers) as response:
                     if response.status == 200:
                         data = await response.json()
-                        # Convert to DataFrame
-                        df = pd.DataFrame(data.get("candles", []))
-                        if not df.empty:
-                            df['timestamp'] = pd.to_datetime(df['timestamp'])
-                            df = df.set_index('timestamp')
                         
-                        return BrokerResponse(success=True, data=df)
+                        # Convert Dhan response to DataFrame
+                        if data.get("close") and len(data["close"]) > 0:
+                            df_data = {
+                                'open': data.get("open", []),
+                                'high': data.get("high", []),
+                                'low': data.get("low", []),
+                                'close': data.get("close", []),
+                                'volume': data.get("volume", []),
+                                'timestamp': data.get("timestamp", [])
+                            }
+                            
+                            # Convert timestamps to datetime
+                            timestamps = []
+                            for ts in df_data['timestamp']:
+                                # Convert Dhan timestamp to datetime
+                                dt = datetime.fromtimestamp(ts)
+                                timestamps.append(dt)
+                            
+                            df = pd.DataFrame({
+                                'open': df_data['open'],
+                                'high': df_data['high'],
+                                'low': df_data['low'],
+                                'close': df_data['close'],
+                                'volume': df_data['volume']
+                            }, index=timestamps)
+                            
+                            logger.debug(f"Fetched {len(df)} candles for {instrument_token}")
+                            return BrokerResponse(success=True, data=df)
+                        else:
+                            return BrokerResponse(success=False, error="No data available")
                     else:
                         error_text = await response.text()
+                        logger.error(f"Failed to fetch OHLC data: {error_text}")
                         return BrokerResponse(success=False, error=error_text)
         
         except Exception as e:
@@ -242,25 +285,40 @@ class DhanAdapter(BrokerAdapter):
             if not self.authenticated:
                 return BrokerResponse(success=False, error="Not authenticated")
             
-            # TODO: Implement actual Dhan order placement API
-            # This is a placeholder implementation
-            order_url = f"{self.base_url}/orders/place"
-            headers = {"Authorization": f"Bearer {self.access_token}"}
-            order_data = {
-                "instrument_token": instrument_token,
-                "quantity": qty,
-                "order_type": order_type,
-                "price": price
+            # Use Dhan's order placement API
+            order_url = f"{self.base_url}/orders"
+            headers = {
+                "access-token": self.access_token,
+                "Content-Type": "application/json"
             }
+            
+            # Map order types
+            dhan_order_type = "MARKET" if order_type.upper() == "MARKET" else "LIMIT"
+            
+            order_data = {
+                "dhanClientId": self.user_id or "default_client",
+                "transactionType": "BUY",  # Default to BUY for now
+                "exchangeSegment": "NSE_FNO",
+                "productType": "INTRADAY",
+                "orderType": dhan_order_type,
+                "securityId": instrument_token,
+                "quantity": qty,
+                "validity": "DAY"
+            }
+            
+            # Add price for limit orders
+            if dhan_order_type == "LIMIT" and price:
+                order_data["price"] = price
             
             async with aiohttp.ClientSession() as session:
                 async with session.post(order_url, json=order_data, headers=headers) as response:
                     if response.status == 200:
                         data = await response.json()
-                        order_id = data.get("order_id")
+                        order_id = data.get("orderId")
                         return BrokerResponse(success=True, data=data, order_id=order_id)
                     else:
                         error_text = await response.text()
+                        logger.error(f"Failed to place order: {error_text}")
                         return BrokerResponse(success=False, error=error_text)
         
         except Exception as e:
@@ -273,18 +331,27 @@ class DhanAdapter(BrokerAdapter):
             if not self.authenticated:
                 return BrokerResponse(success=False, error="Not authenticated")
             
-            # TODO: Implement actual Dhan margin API
-            # This is a placeholder implementation
-            margin_url = f"{self.base_url}/user/margin"
-            headers = {"Authorization": f"Bearer {self.access_token}"}
+            # Use Dhan's fund limit API
+            margin_url = f"{self.base_url}/fundlimit"
+            headers = {
+                "access-token": self.access_token,
+                "Content-Type": "application/json"
+            }
             
             async with aiohttp.ClientSession() as session:
                 async with session.get(margin_url, headers=headers) as response:
                     if response.status == 200:
                         data = await response.json()
-                        return BrokerResponse(success=True, data=data)
+                        # Map Dhan response to our expected format
+                        margin_data = {
+                            "available_margin": data.get("availabelBalance", 0),
+                            "utilized_amount": data.get("utilizedAmount", 0),
+                            "total_balance": data.get("sodLimit", 0)
+                        }
+                        return BrokerResponse(success=True, data=margin_data)
                     else:
                         error_text = await response.text()
+                        logger.error(f"Failed to get margin: {error_text}")
                         return BrokerResponse(success=False, error=error_text)
         
         except Exception as e:

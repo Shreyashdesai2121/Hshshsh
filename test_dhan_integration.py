@@ -10,31 +10,27 @@ import json
 from datetime import datetime, timedelta
 
 # Configuration - Update these with your actual values
-DHAN_API_KEY = "your_dhan_api_key_here"
-DHAN_API_SECRET = "your_dhan_api_secret_here"
-DHAN_BASE_URL = "https://api.dhan.co"  # Update with actual Dhan base URL
-ACCESS_TOKEN = "your_dhan_access_token_here"  # Your access token
+DHAN_API_KEY = "your_dhan_api_key_here"  # This will be used as access token
+DHAN_API_SECRET = "your_dhan_api_secret_here"  # Not used in v2 API
+DHAN_BASE_URL = "https://api.dhan.co/v2"  # Dhan API v2 base URL
+ACCESS_TOKEN = "your_dhan_access_token_here"  # Your access token (same as API key)
 
 async def test_dhan_authentication():
     """Test Dhan authentication."""
     print("🔐 Testing Dhan Authentication...")
     
-    # Update this URL with actual Dhan auth endpoint
-    auth_url = f"{DHAN_BASE_URL}/auth/login"  # This might be different
-    
-    auth_data = {
-        "api_key": DHAN_API_KEY,
-        "api_secret": DHAN_API_SECRET
-    }
+    # Dhan v2 API doesn't have separate auth endpoint
+    # We test by calling fund limit API
+    fund_url = f"{DHAN_BASE_URL}/fundlimit"
     
     headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json"
+        "access-token": ACCESS_TOKEN,
+        "Content-Type": "application/json"
     }
     
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(auth_url, json=auth_data, headers=headers) as response:
+            async with session.get(fund_url, headers=headers) as response:
                 print(f"Auth Status: {response.status}")
                 
                 if response.status == 200:
@@ -54,20 +50,27 @@ async def test_dhan_market_data():
     """Test Dhan market data."""
     print("\n📊 Testing Dhan Market Data...")
     
-    # Update this URL with actual Dhan market data endpoint
-    market_url = f"{DHAN_BASE_URL}/market/quote"  # This might be different
+    # Use Dhan's intraday charts API for NIFTY50
+    market_url = f"{DHAN_BASE_URL}/charts/intraday"
     
     headers = {
-        "Authorization": f"Bearer {ACCESS_TOKEN}",
+        "access-token": ACCESS_TOKEN,
         "Content-Type": "application/json"
     }
     
-    # Test with NIFTY50
-    params = {"symbol": "NIFTY50"}
+    # Test with NIFTY50 index data
+    chart_data = {
+        "securityId": "99992000000000",  # NIFTY50 security ID
+        "exchangeSegment": "IDX_I",
+        "instrument": "INDEX",
+        "interval": "1",
+        "fromDate": datetime.now().strftime("%Y-%m-%d"),
+        "toDate": datetime.now().strftime("%Y-%m-%d")
+    }
     
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(market_url, headers=headers, params=params) as response:
+            async with session.post(market_url, json=chart_data, headers=headers) as response:
                 print(f"Market Data Status: {response.status}")
                 
                 if response.status == 200:
@@ -87,11 +90,11 @@ async def test_dhan_historical_data():
     """Test Dhan historical data."""
     print("\n📈 Testing Dhan Historical Data...")
     
-    # Update this URL with actual Dhan historical data endpoint
-    historical_url = f"{DHAN_BASE_URL}/market/historical"  # This might be different
+    # Use Dhan's historical charts API
+    historical_url = f"{DHAN_BASE_URL}/charts/historical"
     
     headers = {
-        "Authorization": f"Bearer {ACCESS_TOKEN}",
+        "access-token": ACCESS_TOKEN,
         "Content-Type": "application/json"
     }
     
@@ -99,16 +102,17 @@ async def test_dhan_historical_data():
     end_date = datetime.now()
     start_date = end_date - timedelta(days=7)
     
-    params = {
-        "symbol": "NIFTY50",
-        "from": start_date.strftime("%Y-%m-%d"),
-        "to": end_date.strftime("%Y-%m-%d"),
-        "interval": "1D"  # Daily data
+    chart_data = {
+        "securityId": "99992000000000",  # NIFTY50 security ID
+        "exchangeSegment": "IDX_I",
+        "instrument": "INDEX",
+        "fromDate": start_date.strftime("%Y-%m-%d"),
+        "toDate": end_date.strftime("%Y-%m-%d")
     }
     
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(historical_url, headers=headers, params=params) as response:
+            async with session.post(historical_url, json=chart_data, headers=headers) as response:
                 print(f"Historical Data Status: {response.status}")
                 
                 if response.status == 200:

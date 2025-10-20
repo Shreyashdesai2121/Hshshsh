@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Activity, Target, Zap, Clock } from 'lucide-react';
+import { Play, Clock } from 'lucide-react';
 
 interface LiveAlert {
   symbol: string;

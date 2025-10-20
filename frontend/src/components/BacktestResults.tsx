@@ -39,7 +39,7 @@ interface BacktestResults {
 }
 
 const BacktestResults: React.FC = () => {
-  const { fetchData } = useApi();
+  const { baseUrl } = useApi();
   const [results, setResults] = useState<BacktestResults | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +51,7 @@ const BacktestResults: React.FC = () => {
     setRunning(true);
     
     try {
-      const response = await fetch(`${api}/backtest/run?months=${months}`, {
+      const response = await fetch(`${baseUrl}/backtest/run?months=${months}`, {
         method: 'POST',
       });
       
@@ -74,7 +74,7 @@ const BacktestResults: React.FC = () => {
     setError(null);
     
     try {
-      const response = await fetch(`${api}/backtest/results`);
+      const response = await fetch(`${baseUrl}/backtest/results`);
       
       if (!response.ok) {
         if (response.status === 404) {

@@ -17,26 +17,37 @@ class DhanAdapter(BrokerAdapter):
     
     def __init__(self, api_key: str, api_secret: str):
         super().__init__(api_key, api_secret)
-        self.base_url = "https://api.dhan.co"  # TODO: Replace with actual Dhan API URL
+        self.base_url = "https://api.dhan.co"  # TODO: Replace with actual Dhan API URL from their docs
         self.access_token = None
         self.websocket = None
+        self.user_id = None
     
     async def authenticate(self) -> BrokerResponse:
         """Authenticate with Dhan API."""
         try:
-            # TODO: Implement actual Dhan authentication
-            # This is a placeholder implementation
-            auth_url = f"{self.base_url}/auth/login"
+            # Dhan API authentication endpoint
+            # TODO: Replace with actual Dhan authentication endpoint from their docs
+            auth_url = f"{self.base_url}/auth/login"  # This might be different in actual Dhan API
+            
+            # Dhan typically uses form data or specific headers
             auth_data = {
                 "api_key": self.api_key,
                 "api_secret": self.api_secret
             }
             
+            headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+            
             async with aiohttp.ClientSession() as session:
-                async with session.post(auth_url, json=auth_data) as response:
+                async with session.post(auth_url, json=auth_data, headers=headers) as response:
                     if response.status == 200:
                         data = await response.json()
-                        self.access_token = data.get("access_token")
+                        
+                        # Dhan API response structure (adjust based on actual response)
+                        self.access_token = data.get("access_token") or data.get("token")
+                        self.user_id = data.get("user_id") or data.get("userId")
                         self.authenticated = True
                         self.session = session
                         
@@ -57,19 +68,30 @@ class DhanAdapter(BrokerAdapter):
             if not self.authenticated:
                 return BrokerResponse(success=False, error="Not authenticated")
             
-            # TODO: Implement actual Dhan spot price API
-            # This is a placeholder implementation
-            spot_url = f"{self.base_url}/market/quote/{symbol}"
-            headers = {"Authorization": f"Bearer {self.access_token}"}
+            # Dhan market data endpoint
+            # TODO: Replace with actual Dhan market data endpoint
+            spot_url = f"{self.base_url}/market/quote"  # or /market/quote/{symbol}
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "Content-Type": "application/json"
+            }
+            
+            # Dhan might require symbol in query params or body
+            params = {"symbol": symbol}
             
             async with aiohttp.ClientSession() as session:
-                async with session.get(spot_url, headers=headers) as response:
+                async with session.get(spot_url, headers=headers, params=params) as response:
                     if response.status == 200:
                         data = await response.json()
-                        spot_price = data.get("last_price", 0.0)
+                        
+                        # Extract price from Dhan response (adjust based on actual structure)
+                        spot_price = data.get("last_price") or data.get("ltp") or data.get("close") or 0.0
+                        
+                        logger.debug(f"Got spot price for {symbol}: {spot_price}")
                         return BrokerResponse(success=True, data={"price": spot_price})
                     else:
                         error_text = await response.text()
+                        logger.error(f"Failed to get spot price: {error_text}")
                         return BrokerResponse(success=False, error=error_text)
         
         except Exception as e:

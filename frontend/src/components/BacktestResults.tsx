@@ -39,7 +39,7 @@ interface BacktestResults {
 }
 
 const BacktestResults: React.FC = () => {
-  const { api } = useApi();
+  const { fetchData } = useApi();
   const [results, setResults] = useState<BacktestResults | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

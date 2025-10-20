@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Square, Activity, Target, Zap, TrendingUp, AlertCircle, Clock, DollarSign } from 'lucide-react';
+import { Play, Activity, Target, Zap, Clock } from 'lucide-react';
 
 interface LiveAlert {
   symbol: string;
@@ -185,18 +185,6 @@ const LiveMonitor: React.FC = () => {
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'pattern_detected':
-        return <Target className="w-4 h-4" />;
-      case 'kst_overlap':
-        return <Activity className="w-4 h-4" />;
-      case 'breakout_confirmed':
-        return <Zap className="w-4 h-4" />;
-      default:
-        return <Clock className="w-4 h-4" />;
-    }
-  };
 
   const getOutcomeColor = (outcome: string) => {
     switch (outcome) {

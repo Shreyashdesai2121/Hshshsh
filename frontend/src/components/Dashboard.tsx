@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Play, Square, Pause, Settings, TrendingUp, TrendingDown, DollarSign, Target, AlertCircle } from 'lucide-react'
+import { Play, Square, TrendingUp, TrendingDown, DollarSign, Target, AlertCircle } from 'lucide-react'
 import MetricCard from './MetricCard'
 import ControlPanel from './ControlPanel'
 import PositionsTable from './PositionsTable'

@@ -6,6 +6,7 @@ import PositionsTable from './PositionsTable'
 import TradesTable from './TradesTable'
 import LogsViewer from './LogsViewer'
 import PerformanceChart from './PerformanceChart'
+import BacktestResults from './BacktestResults'
 import { useApi } from '../contexts/ApiContext'
 import { useWebSocket } from '../contexts/WebSocketContext'
 
@@ -242,9 +243,15 @@ const Dashboard: React.FC = () => {
           <LogsViewer />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
           <PositionsTable />
           <TradesTable />
+        </div>
+
+        {/* Backtesting Section */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Historical Backtesting</h2>
+          <BacktestResults />
         </div>
       </main>
     </div>

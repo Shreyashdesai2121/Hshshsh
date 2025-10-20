@@ -18,6 +18,7 @@ from state_manager import state_manager
 from data_engine import data_engine
 from analysis_engine import analysis_engine
 from models import signal_to_dict, position_to_dict, trade_to_dict
+from backtest_engine import BacktestEngine, backtest_results_to_dict
 from utils import setup_logging
 
 
@@ -402,6 +403,76 @@ async def get_market_data():
         return JSONResponse(
             status_code=500,
             content={"error": f"Failed to get market data: {str(e)}"}
+        )
+
+# Backtesting endpoints
+@app.post("/backtest/run")
+async def run_backtest(months: int = 5):
+    """Run backtesting for specified number of months."""
+    try:
+        logger.info(f"Starting backtest for {months} months")
+        
+        # Initialize backtest engine
+        backtest_engine = BacktestEngine(data_engine.broker)
+        
+        # Run backtest
+        results = await backtest_engine.run_backtest(months=months)
+        
+        # Convert to dictionary for JSON response
+        results_dict = backtest_results_to_dict(results)
+        
+        # Save results to file
+        with open('backtest_results.json', 'w') as f:
+            json.dump(results_dict, f, indent=2)
+        
+        logger.info(f"Backtest completed: {results.total_trades} trades, {results.total_return_pct:.2f}% return")
+        
+        return results_dict
+    
+    except Exception as e:
+        logger.error(f"Backtest failed: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Backtest failed: {str(e)}"}
+        )
+
+@app.get("/backtest/results")
+async def get_backtest_results():
+    """Get latest backtest results."""
+    try:
+        with open('backtest_results.json', 'r') as f:
+            results = json.load(f)
+        return results
+    
+    except FileNotFoundError:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "No backtest results found"}
+        )
+    except Exception as e:
+        logger.error(f"Error getting backtest results: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
+
+@app.get("/backtest/status")
+async def get_backtest_status():
+    """Get backtest status and progress."""
+    try:
+        # Check if backtest is running
+        # This would need to be implemented with proper async task tracking
+        return {
+            "status": "idle",  # idle, running, completed, error
+            "progress": 0,
+            "message": "No backtest running"
+        }
+    
+    except Exception as e:
+        logger.error(f"Error getting backtest status: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
         )
 
 # WebSocket endpoint

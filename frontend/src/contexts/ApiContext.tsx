@@ -19,7 +19,8 @@ interface ApiProviderProps {
 }
 
 export const ApiProvider: React.FC<ApiProviderProps> = ({ children }) => {
-  const baseUrl = '/api'
+  // Use direct Render backend URL instead of Netlify redirects
+  const baseUrl = 'https://hshshsh-b07n.onrender.com/api'
 
   return (
     <ApiContext.Provider value={{ baseUrl }}>

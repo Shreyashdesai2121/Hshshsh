@@ -26,41 +26,54 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ children }
   const [lastMessage, setLastMessage] = useState<any>(null)
 
   useEffect(() => {
+    // Check if we're in development (localhost) or production (Netlify)
+    const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    
     const connectWebSocket = () => {
       try {
-        const ws = new WebSocket('ws://localhost:8000/ws')
-        
-        ws.onopen = () => {
-          console.log('WebSocket connected')
-          setIsConnected(true)
-          setSocket(ws)
-        }
-        
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data)
-            setLastMessage(data)
-          } catch (error) {
-            console.error('Error parsing WebSocket message:', error)
+        // Use localhost for development, disable for production (Render free tier doesn't support WebSocket)
+        if (isDevelopment) {
+          const ws = new WebSocket('ws://localhost:8000/ws')
+          
+          ws.onopen = () => {
+            console.log('WebSocket connected')
+            setIsConnected(true)
+            setSocket(ws)
           }
-        }
-        
-        ws.onclose = () => {
-          console.log('WebSocket disconnected')
+          
+          ws.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data)
+              setLastMessage(data)
+            } catch (error) {
+              console.error('Error parsing WebSocket message:', error)
+            }
+          }
+          
+          ws.onclose = () => {
+            console.log('WebSocket disconnected')
+            setIsConnected(false)
+            setSocket(null)
+            // Reconnect after 5 seconds
+            setTimeout(connectWebSocket, 5000)
+          }
+          
+          ws.onerror = (error) => {
+            console.error('WebSocket error:', error)
+            setIsConnected(false)
+          }
+        } else {
+          // In production, WebSocket is disabled due to Render free tier limitations
+          console.log('WebSocket disabled in production - using polling instead')
           setIsConnected(false)
           setSocket(null)
-          // Reconnect after 5 seconds
-          setTimeout(connectWebSocket, 5000)
-        }
-        
-        ws.onerror = (error) => {
-          console.error('WebSocket error:', error)
-          setIsConnected(false)
         }
       } catch (error) {
         console.error('Error connecting WebSocket:', error)
-        // Retry after 5 seconds
-        setTimeout(connectWebSocket, 5000)
+        if (isDevelopment) {
+          // Retry after 5 seconds only in development
+          setTimeout(connectWebSocket, 5000)
+        }
       }
     }
 
